@@ -13,8 +13,6 @@ def get_harmonica_dict_by_name(harmonica_name):
     """Returns the harmonica dictionary for the given name, or None if not found."""
     return all_harmonicas.get(harmonica_name, None)
 
-
-
 # 1. Create a set of all notes found in all harmonica dictionaries (from C1 up to the highest found)
 #this may not actually be useful for anything but was part of discovery. maybe delete if don't use
 def extract_all_notes(harmonica_dicts):
