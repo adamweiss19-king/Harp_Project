@@ -1,0 +1,93 @@
+
+    <!doctype html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>Harmonica Transcriber (Test UI)</title>
+      <style>
+        body{font-family:Segoe UI,Arial;margin:18px}
+        textarea{width:100%}
+        .thumb{max-height:120px;margin:6px;border:1px solid #ccc;padding:4px;cursor:pointer}
+        .file-row{display:flex;gap:8px;flex-wrap:wrap}
+        .panel{border:1px solid #ddd;padding:10px;margin:8px 0}
+        .key-item{cursor:pointer;padding:6px;border-bottom:1px solid #eee}
+      </style>
+    </head>
+    <body>
+      <h1>Harmonica Song Manager (Test UI)</h1>
+
+      <!-- Create a song: POST /api/songs {name} -->
+      <div class="panel">
+        <h3>Create Song</h3>
+        <input id="new-song-name" placeholder="Song name">
+        <button onclick="createSong()">Create</button>
+        <p style="font-size:90%;color:#666">Creates a folder under /songs/<slug> and a meta.json file.</p>
+      </div>
+
+      <!-- Song selector: GET /api/songs -->
+      <div class="panel">
+        <h3>Songs</h3>
+        <select id="song-select" onchange="loadSong()" style="min-width:300px"></select>
+        <button onclick="refreshSongs()">Refresh</button>
+      </div>
+
+      <!-- Song area: visible when a song is selected -->
+      <div id="song-area" style="display:none">
+        <h2 id="song-title"></h2>
+
+        <!-- Upload files (photos, txt, pdf) to a song: POST /api/songs/<slug>/upload -->
+        <div class="panel">
+          <h4>Files (click to preview)</h4>
+          <div id="files" class="file-row"></div>
+
+          <input id="file-input" type="file" accept="image/*,.txt,.pdf">
+          <button onclick="uploadFile()">Upload to song</button>
+          <p style="font-size:90%;color:#666">Uploaded files are stored in the song folder. Images can be viewed to transcribe.</p>
+        </div>
+
+        <!-- Manual note entry: POST /api/songs/<slug>/add-notes -->
+        <div class="panel">
+          <h4>Manual Notes (use while viewing photos)</h4>
+          <textarea id="manual-notes" rows="4" placeholder="Type notes like A4 C5 Bb4"></textarea><br/>
+          <button onclick="addNotes()">Add notes to song</button>
+          <p style="font-size:90%;color:#666">Notes are appended to the song's note list. Use space or comma separated notes.</p>
+        </div>
+
+        <!-- Stored notes display -->
+        <div class="panel">
+          <h4>Stored Notes</h4>
+          <pre id="notes-list"></pre>
+        </div>
+
+        <!-- Transcribe endpoint: GET /api/songs/<slug>/transcribe -->
+        <div class="panel">
+          <h4>Transcribe</h4>
+          <label>Song name for output: <input id="trans-song-name" placeholder="optional"></label><br/>
+          <label><input id="easy-only" type="checkbox"> Show easy-to-play results too</label><br/>
+          <button onclick="transcribe()">Transcribe Song</button>
+          <h5>Key ranking (click key to view tabs)</h5>
+          <div id="ranking"></div>
+        </div>
+
+        <!-- Selected key tabs -->
+        <div class="panel">
+          <h4>Selected Key Tabs</h4>
+          <pre id="tabs-view"></pre>
+        </div>
+
+        <!-- Preview area for photos -->
+        <div class="panel">
+          <h4>Preview</h4>
+          <img id="preview-img" src="" style="max-width:100%;display:none">
+        </div>
+      </div>
+
+      <!--
+        External JS file (preferred): /static/app.js
+        Move the long script below into static/app.js for a cleaner project structure.
+        The server serves files from the "static" folder automatically.
+      -->
+      <script src="/static/app.js"></script>
+    </body>
+    </html>
+    """ 
