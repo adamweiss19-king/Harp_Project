@@ -1,7 +1,5 @@
 # Harp_Project
 
-<<<<<<< Updated upstream
-=======
 ### Primary Plan
 
 >>>>>>> Stashed changes
