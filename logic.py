@@ -118,6 +118,26 @@ def percent_notes_in_all_harmonicas(notes, all_harmonicas):
 
 ## Song Logic
 
+# Compile all the steps together for processing a song for the api
+def process_song_for_harmonicas(song_name, song_notes, all_harmonicas, easy_to_play=False):
+    """
+    Given a song name and notes, process it for all harmonicas.
+    If easy_to_play is True, use easy-to-play harmonica dictionaries.
+    Returns the conversion results.
+    """
+    #1b. Store the information in a dictionary
+    song = create_a_song(song_name, song_notes)
+    #2. Convert the notes into MIDI numbers
+    song_midi = song_notes_to_midi(song)
+    #3. Convert the song information into tabs
+    if easy_to_play:
+        results = convert_midi_to_easy_to_play_tabs_for_a_set_of_harmonicas(song, all_harmonicas)
+    else:
+        results = convert_midi_to_tabs_for_a_set_of_harmonicas(song, all_harmonicas)
+    return results
+
+
+
 #1a. Input the information (picture of tabs, sheet music, individual notes or midi)
 def input_song_notes(song_name,song_notes):
     """
@@ -275,4 +295,3 @@ def convert_midi_to_easy_to_play_tabs_for_a_set_of_harmonicas(song, set_of_harmo
         print("Easy Tabs:  ", entry['tabs'])
     print("="*40)
     return results
-

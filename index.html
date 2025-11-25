@@ -1,0 +1,113 @@
+<html>
+    <head>
+        <title>Harmonica Selector</title>
+        <script>
+            async function loadHarmonicas() {
+                const res = await fetch('/api/harmonicas');
+                const names = await res.json();
+                const select = document.getElementById('harmonica-select');
+                select.innerHTML = '';
+                names.forEach(name => {
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.text = name;
+                    select.appendChild(option);
+                });
+            }
+
+            async function showDetails() {
+                const name = document.getElementById('harmonica-select').value;
+                const res = await fetch('/api/harmonicas/' + encodeURIComponent(name));
+                const details = await res.json();
+                document.getElementById('details').textContent = JSON.stringify(details, null, 2);
+            }
+            
+            function toggleInput(kind) {
+                document.getElementById('manual-area').style.display = kind === 'manual' ? 'block' : 'none';
+                document.getElementById('file-area').style.display = kind === 'file' ? 'block' : 'none';
+            }
+
+            async function submitManual() {
+                const raw = document.getElementById('manual-notes').value;
+                const res = await fetch('/api/submit-notes', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({notes: raw})
+                });
+                const j = await res.json();
+                document.getElementById('input-result').textContent = JSON.stringify(j, null, 2);
+            }
+
+            async function submitFile() {
+                const f = document.getElementById('note-file').files[0];
+                if (!f) return alert('Choose a file first');
+                const fd = new FormData();
+                fd.append('file', f);
+                const res = await fetch('/api/upload', { method: 'POST', body: fd });
+                const j = await res.json();
+                document.getElementById('input-result').textContent = JSON.stringify(j, null, 2);
+            }
+
+
+            // Transcribe using stored notes (GET /api/transcribe)
+            async function transcribeStored() {
+                const easy = document.getElementById('easy-checkbox').checked ? 'true' : 'false';
+                const songName = encodeURIComponent(document.getElementById('song-name').value || 'stored_song');
+                const res = await fetch(`/api/transcribe?easy=${easy}&song_name=${songName}`);
+                const j = await res.json();
+                document.getElementById('transcribe-result').textContent = JSON.stringify(j, null, 2);
+            }
+
+            // Transcribe ad-hoc using manual notes (POST /api/transcribe)
+            async function transcribeNow() {
+                const raw = document.getElementById('manual-notes').value;
+                if (!raw) return alert('Enter notes in manual area first or use Submit Manual Notes to store them.');
+                const easy = document.getElementById('easy-checkbox').checked;
+                const songName = document.getElementById('song-name').value || 'ad_hoc_song';
+                const res = await fetch('/api/transcribe', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({notes: raw, song_name: songName, easy: easy})
+                });
+                const j = await res.json();
+                document.getElementById('transcribe-result').textContent = JSON.stringify(j, null, 2);
+            }
+
+            window.onload = function() {
+                loadHarmonicas();
+                toggleInput('manual');
+            }
+        </script>
+    </head>
+    <body>
+        <h1>Select a Harmonica</h1>
+        <select id="harmonica-select" onchange="showDetails()"></select>
+        <pre id="details"></pre>
+
+        <h2>Input Choices</h2>
+        <label><input type="radio" name="input-kind" checked onchange="toggleInput('manual')"> Manual notes</label>
+        <label><input type="radio" name="input-kind" onchange="toggleInput('file')"> Upload file</label>
+
+        <div id="manual-area" style="margin-top:10px;">
+            <textarea id="manual-notes" rows="4" cols="50" placeholder="Type notes, e.g. A4 C5 Bb4"></textarea><br/>
+            <button onclick="submitManual()">Submit Manual Notes (store)</button>
+            <button onclick="transcribeNow()">Transcribe Now (ad-hoc)</button>
+        </div>
+
+        <div id="file-area" style="display:none; margin-top:10px;">
+            <input id="note-file" type="file" accept=".txt"/><br/>
+            <button onclick="submitFile()">Upload File (store only)</button>
+        </div>
+
+        <h3>Transcription Options</h3>
+        <label>Song name: <input id="song-name" type="text" placeholder="optional name"></label>
+        <label style="margin-left:12px;"><input id="easy-checkbox" type="checkbox"> Easy-to-play</label><br/>
+        <button onclick="transcribeStored()" style="margin-top:8px;">Transcribe Stored Notes</button>
+
+        <h3>Result</h3>
+        <pre id="input-result"></pre>
+
+        <h3>Transcription Result</h3>
+        <pre id="transcribe-result"></pre>
+    </body>
+</html>

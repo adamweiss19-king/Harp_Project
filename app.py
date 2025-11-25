@@ -1,16 +1,48 @@
 import os
 import re
+import json
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
-# ensure uploads folder exists
+# Uploads folder configuration
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# SONGS folder (each song gets its own folder with metadata + files)
+SONGS_FOLDER = os.path.join(os.getcwd(), 'songs')
+os.makedirs(SONGS_FOLDER, exist_ok=True)
+
+
+def _slug_name(name: str) -> str:
+    """Return a filesystem-safe slug for a song name."""
+    s = str(name or '').lower()
+    s = re.sub(r'[^a-z0-9_\-]+', '_', s)
+    s = s.strip('_')
+    return s or 'untitled'
+
+def _song_folder(slug: str) -> str:
+    return os.path.join(SONGS_FOLDER, slug)
+
+def _meta_path(slug: str) -> str:
+    return os.path.join(_song_folder(slug), 'song.json')
+
+def _load_meta(slug: str):
+    path = _meta_path(slug)
+    if not os.path.exists(path):
+        return None
+    with open(path, 'r', encoding='utf-8') as fh:
+        return json.load(fh)
+
+def _save_meta(slug: str, meta: dict):
+    folder = _song_folder(slug)
+    os.makedirs(folder, exist_ok=True)
+    with open(_meta_path(slug), 'w', encoding='utf-8') as fh:
+        json.dump(meta, fh, indent=2)
 
 
 # You still import your logic and database just like before
-from logic import get_all_harmonica_names, get_harmonica_dict_by_name
+from logic import get_all_harmonica_names, get_harmonica_dict_by_name, process_song_for_harmonicas
+from data import all_harmonicas
 
 # Create the Flask app instance
 app = Flask(__name__)
@@ -20,8 +52,7 @@ app = Flask(__name__)
 CORS(app)
 
 # --- Define your API Endpoints ---
-# This is equivalent to FastAPI's @app.get("/api/harmonicas")
-
+# gets all harmonica names
 @app.route("/api/harmonicas", methods=['GET'])
 def list_harmonicas():
     """Returns a JSON array of all harmonica names."""
@@ -29,9 +60,7 @@ def list_harmonicas():
     # In Flask, you use the `jsonify` function to properly format the response
     return jsonify(names)
 
-# This is equivalent to FastAPI's @app.get("/api/harmonicas/{harmonica_name}")
-# Notice the <variable_name> syntax for path parameters.
-
+# get details of a specific harmonica
 @app.route("/api/harmonicas/<harmonica_name>", methods=['GET'])
 def get_harmonica_details(harmonica_name):
     """Returns details of a specific harmonica by name."""
@@ -41,9 +70,14 @@ def get_harmonica_details(harmonica_name):
     else:
         return jsonify({"error": "Harmonica not found"}), 404
 
+# simple in-memory store for the last submitted notes
+LAST_SUBMITTED_NOTES = None
+
+# Endpoint to submit notes manually
 @app.route("/api/submit-notes", methods=['POST'])
 def submit_notes():
-    """Accepts JSON { notes: 'A4 C5 ...' } or { notes: ['A4','C5'] } from manual input."""
+    """Accepts JSON { notes: 'A4 C5 ...' } or { notes: ['A4','C5'] } from manual input and stores them."""
+    global LAST_SUBMITTED_NOTES
     data = request.get_json(silent=True) or {}
     notes = data.get('notes')
     if isinstance(notes, str):
@@ -51,11 +85,15 @@ def submit_notes():
         notes = re.split(r'[\s,]+', notes.strip())
     if not isinstance(notes, list):
         return jsonify({"error": "invalid notes format"}), 400
-    return jsonify({"received_notes": notes})
 
+    LAST_SUBMITTED_NOTES = notes
+    return jsonify({"received_notes": notes, "stored": True})
+
+# Endpoint to upload a file
 @app.route("/api/upload", methods=['POST'])
 def upload_file():
     """Accepts a file upload (form field 'file') and saves it to ./uploads."""
+
     uploaded = request.files.get('file')
     if not uploaded:
         return jsonify({"error": "no file uploaded"}), 400
@@ -74,89 +112,42 @@ def upload_file():
     uploaded.save(save_path)
     return jsonify({"saved": True, "filename": filename, "path": save_path})
 
+@app.route("/api/transcribe", methods=['GET', 'POST'])
+def transcribe_to_harmonica():
+    """
+    Transcribe notes to harmonica tabs.
+    - POST with JSON { notes: 'A4 C5' } or { notes: ['A4','C5'] } -> transcribe those notes
+    - GET -> transcribe the last notes submitted via /api/submit-notes
+    Optional query params:
+        ?song_name=NameOfSong
+        ?easy=true    (use easy_to_play harmonicas)
+    """
+    easy = request.args.get('easy', 'false').lower() == 'true'
+    song_name = request.args.get('song_name', 'uploaded_song')
+
+    # choose notes: POST body overrides; otherwise use last submitted
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        notes = data.get('notes')
+        if isinstance(notes, str):
+            notes = re.split(r'[\s,]+', notes.strip())
+        if not isinstance(notes, list):
+            return jsonify({"error": "invalid notes format"}), 400
+    else:
+        # GET -> use stored notes
+        global LAST_SUBMITTED_NOTES
+        notes = LAST_SUBMITTED_NOTES
+        if not notes:
+            return jsonify({"error": "no notes submitted yet (use /api/submit-notes)"}), 400
+
+    # call existing logic to process notes for all harmonicas
+    results = process_song_for_harmonicas(song_name, notes, all_harmonicas, easy_to_play=easy)
+    return jsonify({"song": song_name, "notes": notes, "results": results})
+
 @app.route("/")
 def index():
-    return """
-    <html>
-    <head>
-        <title>Harmonica Selector</title>
-        <script>
-            async function loadHarmonicas() {
-                const res = await fetch('/api/harmonicas');
-                const names = await res.json();
-                const select = document.getElementById('harmonica-select');
-                select.innerHTML = '';
-                names.forEach(name => {
-                    const option = document.createElement('option');
-                    option.value = name;
-                    option.text = name;
-                    select.appendChild(option);
-                });
-            }
-
-            function toggleInput(kind) {
-                document.getElementById('manual-area').style.display = kind === 'manual' ? 'block' : 'none';
-                document.getElementById('file-area').style.display = kind === 'file' ? 'block' : 'none';
-            }
-
-            async function submitManual() {
-                const raw = document.getElementById('manual-notes').value;
-                const res = await fetch('/api/submit-notes', {
-                    method: 'POST',
-                    headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({notes: raw})
-                });
-                const j = await res.json();
-                document.getElementById('input-result').textContent = JSON.stringify(j, null, 2);
-            }
-
-            async function submitFile() {
-                const f = document.getElementById('note-file').files[0];
-                if (!f) return alert('Choose a file first');
-                const fd = new FormData();
-                fd.append('file', f);
-                const res = await fetch('/api/upload', { method: 'POST', body: fd });
-                const j = await res.json();
-                document.getElementById('input-result').textContent = JSON.stringify(j, null, 2);
-            }
-
-            async function showDetails() {
-                const name = document.getElementById('harmonica-select').value;
-                const res = await fetch('/api/harmonicas/' + encodeURIComponent(name));
-                const details = await res.json();
-                document.getElementById('details').textContent = JSON.stringify(details, null, 2);
-            }
-
-            window.onload = function() {
-                loadHarmonicas();
-                toggleInput('manual');
-            }
-        </script>
-    </head>
-    <body>
-        <h1>Select a Harmonica</h1>
-        <select id="harmonica-select" onchange="showDetails()"></select>
-        <pre id="details"></pre>
-
-        <h2>Input Choices</h2>
-        <label><input type="radio" name="input-kind" checked onchange="toggleInput('manual')"> Manual notes</label>
-        <label><input type="radio" name="input-kind" onchange="toggleInput('file')"> Upload file</label>
-
-        <div id="manual-area" style="margin-top:10px;">
-            <textarea id="manual-notes" rows="4" cols="50" placeholder="Type notes, e.g. A4 C5 Bb4"></textarea><br/>
-            <button onclick="submitManual()">Submit Manual Notes</button>
-        </div>
-
-        <div id="file-area" style="display:none; margin-top:10px;">
-            <input id="note-file" type="file" accept=".txt"/><br/>
-            <button onclick="submitFile()">Upload File</button>
-        </div>
-
-        <h3>Result</h3>
-        <pre id="input-result"></pre>
-    </body>
-    </html>
-    """
+    with open("index.html", "r") as f:
+        return f.read()
 
 # To run the development server directly from the script
 if __name__ == '__main__':
